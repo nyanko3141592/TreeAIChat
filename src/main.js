@@ -2,6 +2,17 @@ import '../style.css'
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 
 const API_KEY_STORAGE_KEY = 'gemini_api_key';
+const SELECTED_MODEL_STORAGE_KEY = 'gemini_selected_model';
+
+const DEFAULT_MODEL = 'gemini-1.5-flash-latest'; // デフォルトモデル
+const AVAILABLE_MODELS = [
+  { name: 'Gemini 1.5 Flash (Latest)', value: 'gemini-1.5-flash-latest' },
+  { name: 'Gemini 1.5 Pro (Latest)', value: 'gemini-1.5-pro-latest' },
+  { name: 'Gemini 2.0 Flash', value: 'gemini-2.0-flash' },
+  { name: 'Gemini 2.5 Flash (Preview 04-17)', value: 'gemini-2.5-flash-preview-04-17' },
+  { name: 'Gemini 2.5 Pro (Preview 05-06)', value: 'gemini-2.5-pro-preview-05-06' },
+  { name: 'Gemini 1.0 Pro', value: 'gemini-1.0-pro' },
+];
 
 let chatHistory = []; // 会話ツリー全体を保持
 let selectedNodeId = null; // 現在選択されているノードID
@@ -205,24 +216,25 @@ const updateInputAreaPlaceholder = () => {
 /**
  * GoogleGenerativeAIインスタンスとChatSessionを初期化します。
  * @param {string} apiKey
+ * @param {string} modelName 使用するモデル名
  */
-const initializeGenerativeAI = (apiKey) => {
+const initializeGenerativeAI = (apiKey, modelName) => {
   if (!apiKey) {
     console.error('API Key is missing for AI initialization.');
-    alert('APIキーが設定されていません。ヘッダーからAPIキーを設定してください。');
-    // TODO: UI上でより明確にAPIキー設定を促す
+    // alert('APIキーが設定されていません。ヘッダーからAPIキーを設定してください。'); // ユーザーへの通知は呼び出し元で行う
+    return false;
+  }
+  if (!modelName) {
+    console.error('Model name is missing for AI initialization.');
+    alert('使用するモデルが指定されていません。');
     return false;
   }
   try {
     genAI = new GoogleGenerativeAI(apiKey);
-    // For chat, use the gemini-1.0-pro model
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash"});
-    // ChatSessionを初期化 (会話履歴は都度送信するので、SDK内部の履歴は空で開始)
+    const model = genAI.getGenerativeModel({ model: modelName });
     chat = model.startChat({
-      history: [], //最初は空の履歴
-      generationConfig: {
-        // maxOutputTokens: 200, // 必要に応じて設定
-      },
+      history: [],
+      generationConfig: {},
       safetySettings: [
         {
           category: HarmCategory.HARM_CATEGORY_HARASSMENT,
@@ -242,11 +254,13 @@ const initializeGenerativeAI = (apiKey) => {
         },
       ],
     });
-    console.log('Generative AI initialized.');
+    console.log(`Generative AI initialized with model: ${modelName}`);
     return true;
   } catch (error) {
     console.error('Error initializing Generative AI:', error);
-    alert('AIの初期化に失敗しました。APIキーが正しいか確認してください。');
+    alert(`AIの初期化に失敗しました。APIキーまたはモデル名(${modelName})が正しいか確認してください。エラー: ${error.message}`);
+    genAI = null; // 初期化失敗時はnullに戻す
+    chat = null;
     return false;
   }
 };
@@ -262,31 +276,76 @@ document.addEventListener('DOMContentLoaded', () => {
   const chatContainer = document.getElementById('chat-container');
   const messageInput = document.getElementById('message-input');
   const sendButton = document.getElementById('send-button');
+  const modelSelectElement = document.getElementById('model-select');
+
+  const populateModelSelect = () => {
+    AVAILABLE_MODELS.forEach(model => {
+      const option = document.createElement('option');
+      option.value = model.value;
+      option.textContent = model.name;
+      modelSelectElement.appendChild(option);
+    });
+  };
+
+  const loadAndApplySelectedModel = () => {
+    const savedModel = localStorage.getItem(SELECTED_MODEL_STORAGE_KEY);
+    const modelToUse = AVAILABLE_MODELS.some(m => m.value === savedModel) ? savedModel : DEFAULT_MODEL;
+    modelSelectElement.value = modelToUse;
+    return modelToUse;
+  };
+
+  const handleModelChange = () => {
+    const selectedModel = modelSelectElement.value;
+    localStorage.setItem(SELECTED_MODEL_STORAGE_KEY, selectedModel);
+    console.log(`Model changed to: ${selectedModel}`);
+    // APIキーが既に設定されていれば、AIを再初期化
+    const storedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+    if (storedApiKey && genAI) { // genAIの存在も確認（saveApiKey直後など未初期化の場合があるため）
+      if (!initializeGenerativeAI(storedApiKey, selectedModel)) {
+         // 初期化失敗時のアラートはinitializeGenerativeAI内で表示される
+         // 必要であれば、ここでさらにUI制御（例：入力不可にするなど）を行う
+      }
+    }
+  };
+
+  // モデル選択ドロップダウンの初期化とイベントリスナー設定
+  populateModelSelect();
+  const currentModel = loadAndApplySelectedModel(); // 初期モデルを決定
+  modelSelectElement.addEventListener('change', handleModelChange);
 
   // APIキー関連の処理
   const loadApiKey = () => {
     const storedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+    const currentSelectedModel = modelSelectElement.value; // ドロップダウンの現在の値を使用
+
     if (storedApiKey) {
       apiKeyInput.value = storedApiKey;
       apiKeyInput.style.display = 'none';
       saveApiKeyButton.style.display = 'none';
       resetApiKeyButton.style.display = 'inline-block';
       console.log('API Key loaded from localStorage.');
-      initializeGenerativeAI(storedApiKey); // APIキーロード時にAIを初期化
+      if (!initializeGenerativeAI(storedApiKey, currentSelectedModel)) {
+        alert('APIキーまたはモデル設定に問題があるため、AI機能が利用できません。');
+      }
     } else {
       apiKeyInput.style.display = 'inline-block';
       saveApiKeyButton.style.display = 'inline-block';
       resetApiKeyButton.style.display = 'none';
       console.log('API Key not found in localStorage.');
+      // APIキーがない場合はAI初期化を試みない
+      genAI = null; 
+      chat = null;
     }
   };
 
   const saveApiKey = () => {
     const apiKey = apiKeyInput.value.trim();
+    const currentSelectedModel = modelSelectElement.value;
     if (apiKey) {
       localStorage.setItem(API_KEY_STORAGE_KEY, apiKey);
       console.log('API Key saved to localStorage.');
-      loadApiKey(); // 表示を更新し、AIを初期化
+      // loadApiKeyを呼び出すことで、UI更新とAI初期化が行われる
+      loadApiKey(); 
     } else {
       alert('APIキーを入力してください。');
     }
@@ -294,16 +353,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const resetApiKey = () => {
     localStorage.removeItem(API_KEY_STORAGE_KEY);
-    apiKeyInput.value = ''; // 入力フィールドもクリア
+    apiKeyInput.value = '';
+    genAI = null; // AIインスタンスもクリア
+    chat = null;
     console.log('API Key removed from localStorage.');
-    loadApiKey(); // 表示を更新
+    loadApiKey();
   };
 
   saveApiKeyButton.addEventListener('click', saveApiKey);
   resetApiKeyButton.addEventListener('click', resetApiKey);
 
-  // 初期ロード時にAPIキーの状態を反映
-  loadApiKey();
+  loadApiKey(); // 初期ロード時にAPIキーとモデルの状態を反映してAIを初期化
 
   // チャット履歴の初期化と表示
   if (chatHistory.length === 0) {
@@ -354,7 +414,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // APIキーとAIが初期化されているか確認
     if (!genAI || !chat) {
         const apiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
-        if (!apiKey || !initializeGenerativeAI(apiKey)) {
+        const currentSelectedModel = modelSelectElement.value;
+        if (!apiKey || !initializeGenerativeAI(apiKey, currentSelectedModel)) {
             alert('AIが初期化されていません。APIキーを確認してください。');
             // ユーザーメッセージは追加されたので、ここで処理を中断
             return;

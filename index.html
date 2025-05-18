@@ -9,11 +9,17 @@
   </head>
   <body>
     <header>
-      <h1>AI Tree Chat</h1>
+      <h1>AIチャット</h1>
       <div id="api-key-section">
         <input type="password" id="api-key-input" placeholder="Gemini APIキーを入力">
         <button id="save-api-key">保存</button>
         <button id="reset-api-key" style="display:none;">APIキー再入力</button>
+        <div id="model-selection-section" style="margin-top: 0.5rem;">
+          <label for="model-select">使用モデル: </label>
+          <select id="model-select">
+            <!-- Options will be populated by JavaScript -->
+          </select>
+        </div>
       </div>
     </header>
 
