@@ -36,37 +36,57 @@ const findNodeById = (nodeId, nodes = chatHistory) => {
 /**
  * 会話ノードをチャットコンテナに表示します。
  * @param {object} node 表示する会話ノード
- * @param {HTMLElement} parentElement このノードの親となるHTML要素（ツリー表示用）
+ * @param {HTMLElement} parentDomElement このノードの親となるHTML要素（ツリー表示用）
  * @param {number} indentLevel インデントレベル（ツリー表示用）
  */
-const displayMessageNode = (node, parentElement, indentLevel = 0) => {
-  const messageDiv = document.createElement('div');
-  messageDiv.classList.add('message');
-  messageDiv.classList.add(node.type === 'user' ? 'user-message' : 'ai-message');
-  messageDiv.dataset.nodeId = node.id;
-  messageDiv.style.marginLeft = `${indentLevel * 20}px`; // インデントで階層を表現
+const displayMessageNode = (node, parentDomElement, indentLevel = 0) => {
+  // ノード全体をラップするdiv (message-node-wrapper)
+  const nodeWrapper = document.createElement('div');
+  nodeWrapper.classList.add('message-node-wrapper');
+  // インデントはラッパーに適用（レイアウトに応じて調整が必要）
+  // nodeWrapper.style.marginLeft = `${indentLevel * 20}px`; 
+
+  // メッセージ本体を表示するdiv (message-content)
+  const messageContentDiv = document.createElement('div');
+  messageContentDiv.classList.add('message');
+  messageContentDiv.classList.add(node.type === 'user' ? 'user-message' : 'ai-message');
+  messageContentDiv.dataset.nodeId = node.id;
+  messageContentDiv.id = `msg-${node.id}`; // DOM id を設定
+  // is-child, has-children クラスは messageContentDiv につけるか nodeWrapper につけるか検討
+  if (indentLevel > 0) messageContentDiv.classList.add('is-child');
+  if (node.children && node.children.length > 0) messageContentDiv.classList.add('has-children');
 
   const p = document.createElement('p');
   p.textContent = node.text;
-  messageDiv.appendChild(p);
+  messageContentDiv.appendChild(p);
 
   if (node.id === selectedNodeId) {
-    messageDiv.classList.add('selected-node');
+    messageContentDiv.classList.add('selected-node');
   }
 
-  messageDiv.addEventListener('click', (event) => {
+  messageContentDiv.addEventListener('click', (event) => {
     event.stopPropagation();
     selectedNodeId = node.id;
-    renderChatTree(); // ハイライト更新のために再描画
-    updateInputAreaPlaceholder(); // 入力エリアのプレースホルダー更新
+    renderChatTree();
+    updateInputAreaPlaceholder();
     console.log(`Node selected: ${selectedNodeId}`);
   });
 
-  parentElement.appendChild(messageDiv);
+  nodeWrapper.appendChild(messageContentDiv);
 
+  // 子ノード群のためのコンテナ (children-container)
   if (node.children && node.children.length > 0) {
-    node.children.forEach(childNode => displayMessageNode(childNode, parentElement, indentLevel + 1));
+    const childrenContainer = document.createElement('div');
+    childrenContainer.classList.add('children-container');
+    // childrenContainer.style.marginLeft = `${(indentLevel + 1) * 20}px`; // 子コンテナのインデント例
+
+    node.children.forEach((childNode) => {
+      displayMessageNode(childNode, childrenContainer, indentLevel + 1);
+    });
+    nodeWrapper.appendChild(childrenContainer);
   }
+
+  parentDomElement.appendChild(nodeWrapper);
 };
 
 /**
@@ -75,7 +95,85 @@ const displayMessageNode = (node, parentElement, indentLevel = 0) => {
 const renderChatTree = () => {
   const chatContainer = document.getElementById('chat-container');
   chatContainer.innerHTML = ''; // 既存の表示をクリア
-  chatHistory.forEach(rootNode => displayMessageNode(rootNode, chatContainer, 0));
+
+  // SVGコンテナを準備 (存在しなければ作成)
+  let svgContainer = document.getElementById('connection-lines-svg');
+  if (!svgContainer) {
+    svgContainer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svgContainer.id = 'connection-lines-svg';
+    // chatContainer.appendChild(svgContainer); // chatContainerの子として追加
+    // SVGを最前面、しかしインタラクションを阻害しないようにする。main#chat-container の子として追加。
+    // chatContainer の最初の子要素として追加することで、z-indexの問題を回避しやすくする。
+    chatContainer.insertBefore(svgContainer, chatContainer.firstChild);
+  }
+  svgContainer.innerHTML = ''; // 既存の線をクリア
+
+  // DOMにノードを追加
+  chatHistory.forEach(rootNode => {
+    displayMessageNode(rootNode, chatContainer, 0);
+  });
+
+  // 接続線を描画 (DOMが構築された後)
+  // setTimeout を使って、DOMのレンダリングが完了するのを少し待つ (確実性の向上)
+  setTimeout(drawConnections, 0);
+};
+
+/**
+ * 会話ノード間の接続線を描画します。
+ */
+const drawConnections = () => {
+  const svgContainer = document.getElementById('connection-lines-svg');
+  if (!svgContainer) return;
+
+  // chatContainer のスクロール状態やサイズを考慮してSVGの viewBox や大きさを設定
+  const chatRect = document.getElementById('chat-container').getBoundingClientRect();
+  const scrollWidth = document.getElementById('chat-container').scrollWidth;
+  const scrollHeight = document.getElementById('chat-container').scrollHeight;
+  svgContainer.setAttribute('viewBox', `0 0 ${scrollWidth} ${scrollHeight}`);
+  svgContainer.style.width = `${scrollWidth}px`;
+  svgContainer.style.height = `${scrollHeight}px`;
+
+  const drawLine = (x1, y1, x2, y2) => {
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', x1);
+    line.setAttribute('y1', y1);
+    line.setAttribute('x2', x2);
+    line.setAttribute('y2', y2);
+    line.setAttribute('stroke', '#555');
+    line.setAttribute('stroke-width', '2');
+    svgContainer.appendChild(line);
+  };
+
+  // chatHistory を再帰的に走査して線を描画
+  const traverseAndDraw = (nodes, parentNodeElement = null) => {
+    nodes.forEach(node => {
+      const nodeElement = document.getElementById(`msg-${node.id}`);
+      if (!nodeElement) return;
+
+      const nodeRect = nodeElement.getBoundingClientRect();
+      // chatContainer基準の相対座標に変換
+      const nodeCenterX = nodeElement.offsetLeft + nodeRect.width / 2;
+      const nodeTopY = nodeElement.offsetTop;
+      const nodeBottomY = nodeElement.offsetTop + nodeRect.height;
+
+      if (parentNodeElement) {
+        const parentRect = parentNodeElement.getBoundingClientRect();
+        const parentCenterX = parentNodeElement.offsetLeft + parentRect.width / 2;
+        const parentBottomY = parentNodeElement.offsetTop + parentRect.height;
+        
+        // 親ノードの下中央から子ノードの上中央へ線を引く
+        drawLine(parentCenterX, parentBottomY, nodeCenterX, nodeTopY);
+      }
+
+      if (node.children && node.children.length > 0) {
+        // 子コンテナではなく、個々の子メッセージ要素に対して線を引くため、
+        // 再帰呼び出しの際に親として現在の nodeElement を渡す
+        traverseAndDraw(node.children, nodeElement);
+      }
+    });
+  };
+
+  traverseAndDraw(chatHistory);
 };
 
 /**
