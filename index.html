@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AIチャット</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <header>
+      <h1>AIチャット</h1>
+      <div id="api-key-section">
+        <input type="password" id="api-key-input" placeholder="Gemini APIキーを入力">
+        <button id="save-api-key">保存</button>
+        <button id="reset-api-key" style="display:none;">APIキー再入力</button>
+      </div>
+    </header>
+
+    <main id="chat-container">
+      <!-- 会話ツリーはここに表示されます -->
+    </main>
+
+    <footer>
+      <div id="input-area">
+        <textarea id="message-input" placeholder="メッセージを入力..."></textarea>
+        <button id="send-button">送信</button>
+      </div>
+    </footer>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
