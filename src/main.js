@@ -14,10 +14,10 @@ const AVAILABLE_MODELS = [
   { name: 'Gemini 1.0 Pro', value: 'gemini-1.0-pro' },
 ];
 
-let chatHistory = []; // 会話ツリー全体を保持
-let selectedNodeId = null; // 現在選択されているノードID
-let genAI = null; // GoogleGenerativeAIインスタンス
-let chat = null; // ChatSessionインスタンス
+let chatHistory = [];
+let selectedNodeId = null;
+let genAI = null; // GoogleGenerativeAIインスタンスを保持
+let model = null; // GenerativeModelインスタンスを保持 (ChatSessionの代わりに)
 
 /**
  * ユニークなノードIDを生成します。
@@ -214,14 +214,13 @@ const updateInputAreaPlaceholder = () => {
 };
 
 /**
- * GoogleGenerativeAIインスタンスとChatSessionを初期化します。
+ * GoogleGenerativeAIインスタンスとGenerativeModelを初期化します。
  * @param {string} apiKey
  * @param {string} modelName 使用するモデル名
  */
 const initializeGenerativeAI = (apiKey, modelName) => {
   if (!apiKey) {
     console.error('API Key is missing for AI initialization.');
-    // alert('APIキーが設定されていません。ヘッダーからAPIキーを設定してください。'); // ユーザーへの通知は呼び出し元で行う
     return false;
   }
   if (!modelName) {
@@ -231,38 +230,52 @@ const initializeGenerativeAI = (apiKey, modelName) => {
   }
   try {
     genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: modelName });
-    chat = model.startChat({
-      history: [],
-      generationConfig: {},
-      safetySettings: [
-        {
-          category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-      ],
-    });
-    console.log(`Generative AI initialized with model: ${modelName}`);
+    model = genAI.getGenerativeModel({ model: modelName }); // ChatSessionではなくmodelを直接取得
+    console.log(`Generative AI initialized with model: ${modelName}. Model instance ready.`);
     return true;
   } catch (error) {
     console.error('Error initializing Generative AI:', error);
     alert(`AIの初期化に失敗しました。APIキーまたはモデル名(${modelName})が正しいか確認してください。エラー: ${error.message}`);
-    genAI = null; // 初期化失敗時はnullに戻す
-    chat = null;
+    genAI = null;
+    model = null; // modelもnullに
     return false;
   }
+};
+
+/**
+ * 指定されたノードIDまでのパスをルートから取得します。
+ * @param {string} targetNodeId ターゲットノードのID
+ * @param {Array} nodes 現在検索中のノード配列 (デフォルトは chatHistory)
+ * @param {Array} currentPath 現在のパス (再帰用)
+ * @returns {Array|null} ノードオブジェクトの配列としてのパス、見つからなければnull
+ */
+const getPathToNode = (targetNodeId, nodes = chatHistory, currentPath = []) => {
+  for (const n of nodes) {
+    const path = [...currentPath, n];
+    if (n.id === targetNodeId) {
+      return path;
+    }
+    if (n.children && n.children.length > 0) {
+      const foundPath = getPathToNode(targetNodeId, n.children, path);
+      if (foundPath) {
+        return foundPath;
+      }
+    }
+  }
+  return null;
+};
+
+/**
+ * ノードのパスをAPIが期待する履歴形式に変換します。
+ * @param {Array} path ノードオブジェクトの配列 (ルートからのパス)
+ * @returns {Array} APIのcontents形式の配列
+ */
+const formatHistoryForApi = (path) => {
+  if (!path) return [];
+  return path.map(node => ({
+    role: node.type === 'ai' ? 'model' : 'user',
+    parts: [{ text: node.text }],
+  }));
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -316,8 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // APIキー関連の処理
   const loadApiKey = () => {
     const storedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
-    const currentSelectedModel = modelSelectElement.value; // ドロップダウンの現在の値を使用
-
+    const currentSelectedModel = modelSelectElement.value;
     if (storedApiKey) {
       apiKeyInput.value = storedApiKey;
       apiKeyInput.style.display = 'none';
@@ -332,20 +344,17 @@ document.addEventListener('DOMContentLoaded', () => {
       saveApiKeyButton.style.display = 'inline-block';
       resetApiKeyButton.style.display = 'none';
       console.log('API Key not found in localStorage.');
-      // APIキーがない場合はAI初期化を試みない
-      genAI = null; 
-      chat = null;
+      genAI = null;
+      model = null; // model もクリア
     }
   };
 
   const saveApiKey = () => {
     const apiKey = apiKeyInput.value.trim();
-    const currentSelectedModel = modelSelectElement.value;
     if (apiKey) {
       localStorage.setItem(API_KEY_STORAGE_KEY, apiKey);
       console.log('API Key saved to localStorage.');
-      // loadApiKeyを呼び出すことで、UI更新とAI初期化が行われる
-      loadApiKey(); 
+      loadApiKey();
     } else {
       alert('APIキーを入力してください。');
     }
@@ -354,8 +363,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const resetApiKey = () => {
     localStorage.removeItem(API_KEY_STORAGE_KEY);
     apiKeyInput.value = '';
-    genAI = null; // AIインスタンスもクリア
-    chat = null;
+    genAI = null;
+    model = null; // model もクリア
     console.log('API Key removed from localStorage.');
     loadApiKey();
   };
@@ -363,7 +372,7 @@ document.addEventListener('DOMContentLoaded', () => {
   saveApiKeyButton.addEventListener('click', saveApiKey);
   resetApiKeyButton.addEventListener('click', resetApiKey);
 
-  loadApiKey(); // 初期ロード時にAPIキーとモデルの状態を反映してAIを初期化
+  loadApiKey(); // 初期ロード
 
   // チャット履歴の初期化と表示
   if (chatHistory.length === 0) {
@@ -396,7 +405,22 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // ユーザーメッセージノードの作成と追加
+    // APIキーとAIモデルが初期化されているか確認
+    if (!genAI || !model) {
+      const apiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+      const currentSelectedModel = modelSelectElement.value; // modelSelectElement がスコープ内にあること
+      if (!apiKey || !initializeGenerativeAI(apiKey, currentSelectedModel)) {
+        alert('AIが初期化されていません。APIキーとモデル設定を確認してください。');
+        return;
+      }
+      // initializeGenerativeAI が失敗した場合も model は null のままなので、再度チェック
+      if (!model) {
+        alert('AIモデルの準備に失敗しました。');
+        return;
+      }
+    }
+
+    // 1. ユーザーメッセージノードの作成とツリーへの追加
     const userMessageId = generateNodeId();
     const userMessageNode = {
       id: userMessageId,
@@ -405,30 +429,13 @@ document.addEventListener('DOMContentLoaded', () => {
       children: []
     };
     parentNode.children.push(userMessageNode);
-    selectedNodeId = userMessageId; // 新しいユーザーメッセージを選択状態にする
-    renderChatTree();
-    updateInputAreaPlaceholder();
+    // 新しいユーザーメッセージを一時的に選択状態にする (UIフィードバックのため)
+    // selectedNodeId = userMessageId; // AI応答後にAIノードを選択するため、ここでは更新しないか、一時的とする
+    renderChatTree(); // ユーザーメッセージをまず表示
     messageInput.value = '';
     adjustTextareaHeight(messageInput);
 
-    // APIキーとAIが初期化されているか確認
-    if (!genAI || !chat) {
-        const apiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
-        const currentSelectedModel = modelSelectElement.value;
-        if (!apiKey || !initializeGenerativeAI(apiKey, currentSelectedModel)) {
-            alert('AIが初期化されていません。APIキーを確認してください。');
-            // ユーザーメッセージは追加されたので、ここで処理を中断
-            return;
-        }
-    }
-
-    // AIに応答を生成させる (親がAIノード、またはユーザーノードの場合もAPIを呼ぶ想定)
-    // 仕様: あらゆる会話ノードから複数の分岐（ツリー構造）を無限に作成可能です。
-    // 親ノードがAIの場合、子のノードはユーザーの質問になる。
-    // 親ノードがユーザーの場合、子のノードはAIの応答になる。
-    // 今回は、ユーザーが入力したメッセージ(userMessageNode)に対するAIの応答を生成する。
-
-    // ローディング表示 (簡易)
+    // 2. ローディング表示の準備と表示
     const loadingMessageId = generateNodeId();
     const loadingNode = {
       id: loadingMessageId,
@@ -437,46 +444,39 @@ document.addEventListener('DOMContentLoaded', () => {
       children: []
     };
     userMessageNode.children.push(loadingNode);
-    selectedNodeId = loadingMessageId;
-    renderChatTree();
+    selectedNodeId = loadingMessageId; // ローディングノードを選択状態に
+    renderChatTree(); // ローディング表示
+    updateInputAreaPlaceholder();
 
     try {
-      // Gemini APIに送信する会話履歴の構築
-      // ルートから現在のuserMessageNodeまでのパスを履歴として送信
-      const historyForApi = [];
-      let current = userMessageNode;
-      const path = [current];
-      while (current) {
-        const parent = findNodeById(selectedNodeId, chatHistory); // このselectedNodeIdは誤り。findParentNodeのような関数が必要
-                                                                    // 正しくは、userMessageNodeの親をたどる必要がある。
-                                                                    // 今回は簡略化のため、ルートからuserMessageNodeまでのメッセージのみを履歴とする。
-                                                                    // project.mdのデータ構造では親子関係が明確なので、それを辿るのが正しい。
-                                                                    // 一旦、直前のユーザーメッセージのみを送信する形にする。
-        // TODO: 正しい会話履歴を構築するロジックに修正
-        break; // 仮でループを抜ける
+      // 3. APIに送信する会話履歴の構築
+      //    ユーザーが入力した最新のメッセージ(userMessageNode)を含むパスを取得
+      const pathToUserMessage = getPathToNode(userMessageId);
+      if (!pathToUserMessage) {
+        throw new Error('Failed to build conversation path for API.');
       }
+      const historyForApi = formatHistoryForApi(pathToUserMessage);
+      
+      console.log('Sending to API with history:', JSON.stringify(historyForApi, null, 2));
 
-      // 実際には、送信するメッセージは { role: "user" | "model", parts: [{ text: "..." }] } の形式
-      // 今回は model.sendMessage を使うので、SDKが形式を整えてくれる
-      const result = await chat.sendMessage(text); // ユーザーの最新の質問を送信
+      // 4. API呼び出し (generateContent を使用)
+      const result = await model.generateContent({ contents: historyForApi });
       const response = result.response;
       const aiResponseText = response.text();
 
-      // ローディング表示をAIの応答に置き換える
+      // 5. ローディング表示をAIの応答に置き換える
       loadingNode.text = aiResponseText;
-      // loadingNode.id はそのまま。必要なら新しいIDを振っても良い。
 
     } catch (error) {
-      console.error('Error sending message to Generative AI:', error);
+      console.error('Error during AI response generation:', error);
       loadingNode.text = 'AIの応答取得に失敗しました。エラー: ' + error.message;
-      // エラー内容によっては、APIキーの再設定を促すなどの処理も考慮
-      if (error.message.includes('API key not valid')) {
+      if (error.message && error.message.includes('API key not valid')) {
         alert('APIキーが無効です。再度設定してください。');
-        // resetApiKey(); // APIキーをリセットする処理を呼ぶなど
       }
     } finally {
-      selectedNodeId = loadingNode.id; // AIの応答ノードを選択状態にする
-      renderChatTree();
+      // AI応答後(成功・失敗問わず)、AIノード(旧ローディングノード)を選択状態にする
+      selectedNodeId = loadingNode.id;
+      renderChatTree(); // 最終的な表示更新
       updateInputAreaPlaceholder();
     }
   };
