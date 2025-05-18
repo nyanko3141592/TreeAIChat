@@ -3,6 +3,8 @@ import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/ge
 
 const API_KEY_STORAGE_KEY = 'gemini_api_key';
 const SELECTED_MODEL_STORAGE_KEY = 'gemini_selected_model';
+const CHAT_HISTORY_STORAGE_KEY = 'gemini_chat_history'; // チャット履歴用キー
+const SELECTED_NODE_ID_STORAGE_KEY = 'gemini_selected_node_id'; // 選択ノードID用キー
 
 const DEFAULT_MODEL = 'gemini-1.5-flash-latest'; // デフォルトモデル
 const AVAILABLE_MODELS = [
@@ -80,6 +82,7 @@ const displayMessageNode = (node, parentDomElement, indentLevel = 0) => {
     selectedNodeId = node.id;
     renderChatTree();
     updateInputAreaPlaceholder();
+    saveChatState();
     console.log(`Node selected: ${selectedNodeId}`);
   });
 
@@ -278,6 +281,72 @@ const formatHistoryForApi = (path) => {
   }));
 };
 
+/**
+ * チャットの状態（履歴と選択ノードID）をlocalStorageに保存します。
+ */
+const saveChatState = () => {
+  localStorage.setItem(CHAT_HISTORY_STORAGE_KEY, JSON.stringify(chatHistory));
+  localStorage.setItem(SELECTED_NODE_ID_STORAGE_KEY, selectedNodeId);
+  console.log('Chat state saved to localStorage.');
+};
+
+/**
+ * localStorageからチャットの状態を読み込みます。
+ * 読み込みに失敗した場合は、新しいチャットとして初期化します。
+ */
+const loadChatState = () => {
+  const storedHistory = localStorage.getItem(CHAT_HISTORY_STORAGE_KEY);
+  const storedNodeId = localStorage.getItem(SELECTED_NODE_ID_STORAGE_KEY);
+
+  if (storedHistory && storedNodeId) {
+    try {
+      chatHistory = JSON.parse(storedHistory);
+      selectedNodeId = storedNodeId;
+      // 念のため、selectedNodeId が chatHistory 内に存在するか確認
+      if (!findNodeById(selectedNodeId)) {
+        console.warn('Stored selectedNodeId not found in loaded history. Resetting to root.');
+        if (chatHistory.length > 0) {
+          selectedNodeId = chatHistory[0].id; // 最初のルートノードを選択
+        } else {
+          // 履歴も空の場合は新規チャットを初期化
+          initializeNewChat(false); // 再帰呼び出しを避けるため、保存はしない
+          return; // ここで処理を終了
+        }
+      }
+      console.log('Chat state loaded from localStorage.');
+    } catch (error) {
+      console.error('Error parsing chat state from localStorage:', error);
+      initializeNewChat(false); // パース失敗時も新規チャット
+    }
+  } else {
+    console.log('No chat state found in localStorage. Initializing new chat.');
+    initializeNewChat(false); // 保存データがない場合も新規チャット（ただし初回ロードなので保存はしない）
+  }
+};
+
+/**
+ * 新しいチャットセッションを開始します。
+ * @param {boolean} shouldSaveState - 新規チャット状態をlocalStorageに保存するかどうか (デフォルトはtrue)
+ */
+const initializeNewChat = (shouldSaveState = true) => {
+  const rootId = generateNodeId();
+  chatHistory = [
+    {
+      id: rootId,
+      type: 'ai',
+      text: 'AIに質問してください',
+      children: []
+    }
+  ];
+  selectedNodeId = rootId;
+  if (shouldSaveState) {
+    saveChatState();
+  }
+  renderChatTree();
+  updateInputAreaPlaceholder();
+  console.log('New chat initialized.');
+};
+
 document.addEventListener('DOMContentLoaded', () => {
   console.log('AI Chat App Loaded');
 
@@ -290,6 +359,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const messageInput = document.getElementById('message-input');
   const sendButton = document.getElementById('send-button');
   const modelSelectElement = document.getElementById('model-select');
+  const newChatButton = document.getElementById('new-chat-button'); // 新規チャットボタン
 
   const populateModelSelect = () => {
     AVAILABLE_MODELS.forEach(model => {
@@ -371,22 +441,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   saveApiKeyButton.addEventListener('click', saveApiKey);
   resetApiKeyButton.addEventListener('click', resetApiKey);
+  newChatButton.addEventListener('click', () => initializeNewChat()); // 新規チャットボタンのイベントリスナー
 
-  loadApiKey(); // 初期ロード
+  loadChatState(); // APIキーより先にチャット状態をロード
+  loadApiKey();    // チャット状態をロードした後にAPIキーをロード
 
-  // チャット履歴の初期化と表示
-  if (chatHistory.length === 0) {
-    const rootId = generateNodeId();
-    chatHistory = [
-      {
-        id: rootId,
-        type: 'ai',
-        text: 'AIに質問してください',
-        children: []
-      }
-    ];
-    selectedNodeId = rootId; // 初期選択はルートノード
-  }
+  // チャット履歴の初期化と表示 (loadChatStateに移行)
+  // if (chatHistory.length === 0) { ... }
   renderChatTree();
   updateInputAreaPlaceholder(); // 初期プレースホルダー設定
 
@@ -478,6 +539,7 @@ document.addEventListener('DOMContentLoaded', () => {
       selectedNodeId = loadingNode.id;
       renderChatTree(); // 最終的な表示更新
       updateInputAreaPlaceholder();
+      saveChatState(); // メッセージ送受信後にも保存
     }
   };
 

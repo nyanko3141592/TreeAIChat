@@ -37,6 +37,19 @@ body {
   background-color: #4cae4c;
 }
 
+#new-chat-button {
+  padding: 0.3rem 0.8rem;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#new-chat-button:hover {
+  background-color: #0056b3;
+}
+
 #model-selection-section {
   display: flex;
   align-items: center;
