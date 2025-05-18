@@ -9,26 +9,23 @@ body {
   color: #333;
 }
 
-header {
-  background-color: #333;
-  color: white;
-  padding: 1rem;
-  text-align: center;
-}
-
 #api-key-section {
-  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 #api-key-section input {
-  padding: 0.5rem;
-  margin-right: 0.5rem;
+  padding: 0.3rem;
   border: 1px solid #ccc;
   border-radius: 4px;
+  flex-grow: 1;
 }
 
 #api-key-section button {
-  padding: 0.5rem 1rem;
+  padding: 0.3rem 0.8rem;
   background-color: #5cb85c;
   color: white;
   border: none;
@@ -38,6 +35,18 @@ header {
 
 #api-key-section button:hover {
   background-color: #4cae4c;
+}
+
+#model-selection-section {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+#model-selection-section select {
+  padding: 0.3rem;
+  border-radius: 4px;
+  border: 1px solid #ccc;
 }
 
 main#chat-container {
@@ -111,36 +120,53 @@ main#chat-container {
 }
 
 footer {
-  padding: 1rem;
+  padding: 0.5rem;
   background-color: #eee;
 }
 
 #input-area {
   display: flex;
+  flex-direction: column;
+}
+
+#header-content-wrapper {
+  display: flex;
+  flex-direction: row;
   align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  width: 100%;
+}
+
+#header-content-wrapper h1 {
+  margin: 0 0.5rem 0 0;
+  font-size: 1.2rem;
+  color: #333;
 }
 
 #input-area textarea {
   flex-grow: 1;
-  padding: 0.8rem;
+  padding: 0.5rem;
   border: 1px solid #ccc;
   border-radius: 4px;
   resize: none;
-  min-height: 40px;
-  max-height: 120px;
+  min-height: 30px;
+  max-height: 100px;
   overflow-y: auto;
-  margin-right: 0.5rem;
+  margin-bottom: 0.5rem;
+  width: calc(100% - 1rem);
 }
 
-#input-area button {
-  padding: 0.8rem 1.5rem;
+#input-area button#send-button {
+  padding: 0.5rem 1rem;
   background-color: #007bff;
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
+  width: 100%;
 }
 
-#input-area button:hover {
+#input-area button#send-button:hover {
   background-color: #0056b3;
 } 

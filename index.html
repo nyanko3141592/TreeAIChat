@@ -8,20 +8,6 @@
     <link rel="stylesheet" href="style.css">
   </head>
   <body>
-    <header>
-      <h1>AIチャット</h1>
-      <div id="api-key-section">
-        <input type="password" id="api-key-input" placeholder="Gemini APIキーを入力">
-        <button id="save-api-key">保存</button>
-        <button id="reset-api-key" style="display:none;">APIキー再入力</button>
-        <div id="model-selection-section" style="margin-top: 0.5rem;">
-          <label for="model-select">使用モデル: </label>
-          <select id="model-select">
-            <!-- Options will be populated by JavaScript -->
-          </select>
-        </div>
-      </div>
-    </header>
 
     <main id="chat-container">
       <!-- 会話ツリーはここに表示されます -->
@@ -29,6 +15,22 @@
 
     <footer>
       <div id="input-area">
+        <!-- ヘッダーから移動してきた要素 -->
+        <div id="header-content-wrapper"> <!-- 新しいラッパー要素 -->
+          <h1>AI Tree Chat</h1>
+          <div id="api-key-section">
+            <input type="password" id="api-key-input" placeholder="Gemini APIキーを入力">
+            <button id="save-api-key">保存</button>
+            <button id="reset-api-key" style="display:none;">APIキー再入力</button>
+            <div id="model-selection-section"> <!-- style="margin-top: 0.5rem;" はCSSで調整 -->
+              <label for="model-select">使用モデル: </label>
+              <select id="model-select">
+                <!-- Options will be populated by JavaScript -->
+              </select>
+            </div>
+          </div>
+        </div>
+        <!-- 元からあった要素 -->
         <textarea id="message-input" placeholder="メッセージを入力..."></textarea>
         <button id="send-button">送信</button>
       </div>
